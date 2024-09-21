@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from jaxtyping import Float
 
 from merge.modules.config import TransformerConfig
 
@@ -9,7 +9,7 @@ class RMSNorm(nn.Module):
     def __init__(
         self,
         config: TransformerConfig,
-        eps: float = 1e-5,
+        eps: Float = 1e-5,
     ):
         """
         Root Mean Square Normalization Layer.
@@ -40,7 +40,7 @@ class LayerNorm(nn.Module):
     def __init__(
         self,
         config: TransformerConfig,
-        eps: float = 1e-5,
+        eps: Float = 1e-5,
     ):
         """
         Layer Normalization.
