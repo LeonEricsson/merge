@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 import torch.nn.functional as F
 from datasets import Dataset
 from datasets import DownloadMode
 from datasets import load_dataset
+from jaxtyping import Bool
 from jaxtyping import Int
 from torch import Tensor
 
@@ -12,11 +14,12 @@ from merge.preprocessing.tokenizer import AutoTokenizer
 
 def prepare_dataset(
     dataset_name: str,
-    tokenizer_name: str,
+    tokenizer: AutoTokenizer,
+    name: str,
     min_seq_length: Int,
     max_seq_length: Int,
-    padding_token: Int,
-    name: str,
+    split_long_sequences: Bool = True,
+    num_proc: Int = 16,
     split: str | None = None,
     revision: str | None = None,
     output_dir: Path = Path("./data"),
@@ -24,6 +27,29 @@ def prepare_dataset(
     push: bool = False,
     hf_username: str | None = None,
 ) -> None:
+    """
+    Preprocesses a text dataset from HuggingFace Hub.
+
+    Tokenizes text using provided tokenizer, handles sequences based on length constraints, and saves
+    the processed dataset with metadata. Can optionally push to HuggingFace Hub.
+
+    Args:
+        dataset_name: HuggingFace dataset identifier (e.g., 'organization/dataset')
+        tokenizer: Tokenizer instance used for text tokenization
+        name: Dataset configuration name if applicable
+        min_seq_length: Minimum sequence length (shorter sequences are discarded)
+        max_seq_length: Maximum sequence length (longer sequences are split or truncated)
+        split_long_sequences: If True, splits sequences > max_length into chunks. If False, truncates
+        num_proc: Number of processes for parallel preprocessing
+        split: Dataset split to process (e.g., 'train', 'validation')
+        revision: Dataset version/revision
+        output_dir: Root directory for saving processed datasets
+        cache_dir: Directory for HuggingFace cache
+        push: Whether to push processed dataset to HuggingFace Hub
+        hf_username: Required if push=True, username for HuggingFace Hub
+    """
+    assert min_seq_length <= max_seq_length
+    assert tokenizer.pad_token_id is not None
 
     dataset = _download_dataset(
         dataset_name=dataset_name,
@@ -31,26 +57,47 @@ def prepare_dataset(
         split=split,
         revision=revision,
         cache_dir=cache_dir,
+        num_proc=num_proc,
     )
 
-    dataset = _tokenize(dataset, tokenizer_name)
+    if split_long_sequences:
+        dataset = _process_sequences(
+            _tokenize(dataset, tokenizer),
+            min_seq_length,
+            max_seq_length,
+            tokenizer.pad_token_id,
+        )
+    else:
+        dataset = _tokenize_truncate(dataset, tokenizer, max_seq_length, num_proc)
 
-    dataset = _process_sequences(dataset, min_seq_length, max_seq_length, padding_token)
+    metadata = {
+        "dataset_name": dataset_name,
+        "tokenizer_name": tokenizer.name_or_path,
+        "preprocessing_params": {
+            "min_seq_length": min_seq_length,
+            "max_seq_length": max_seq_length,
+            "split_long_sequences": split_long_sequences,
+            "num_proc": num_proc,
+            "split": split,
+            "revision": revision,
+        },
+    }
 
-    _save(dataset, output_dir)
+    _save(dataset, metadata, output_dir)
 
     if push:
         assert hf_username is not None
-        id = f"{hf_username}/pretokenized_{name}_{tokenizer_name}"
+        id = f"{hf_username}/pretokenized_{name}_{tokenizer.name_or_path}_ctx{max_seq_length}"
         dataset.push_to_hub(id, split=split)
 
 
 def _download_dataset(
     dataset_name: str,
     name: str,
-    split: str | None = None,
-    revision: str | None = None,
-    cache_dir: Path = Path("./hf_cache"),
+    split: str | None,
+    revision: str | None,
+    cache_dir: Path,
+    num_proc: Int,
 ) -> Dataset:
 
     dataset = load_dataset(
@@ -60,22 +107,34 @@ def _download_dataset(
         revision=revision,
         download_mode=DownloadMode.REUSE_CACHE_IF_EXISTS,
         cache_dir=cache_dir,
-        num_proc=4,
+        num_proc=num_proc,
     )
 
     return dataset.select_columns("text")
 
 
-def _tokenize(dataset: Dataset, tokenizer_name: str) -> Dataset:
-    tokenizer = AutoTokenizer.create(tokenizer_name)
-    dataset = dataset.map(lambda x: tokenizer(x["text"]), batched=True)
+def _tokenize(dataset: Dataset, tokenizer: AutoTokenizer, num_proc: Int) -> Dataset:
+    dataset = dataset.map(
+        lambda x: tokenizer(x["text"]), batched=True, num_proc=num_proc
+    )
     dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
     return dataset
 
 
-def _tokenize_truncate(dataset: Dataset, tokenizer_name: str) -> Dataset:
-    tokenizer = AutoTokenizer.create(tokenizer_name)
-    dataset = dataset.map(lambda x: tokenizer(x["text"]), batched=True)
+def _tokenize_truncate(
+    dataset: Dataset,
+    tokenizer: AutoTokenizer,
+    max_seq_length: Int,
+    num_proc: Int,
+) -> Dataset:
+    dataset = dataset.map(
+        lambda x: tokenizer(
+            x["text"], truncation=True, max_length=max_seq_length, padding="max_length"
+        ),
+        batched=True,
+        remove_columns=["text"],
+        num_proc=num_proc,
+    )
     dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
     return dataset
 
@@ -90,37 +149,45 @@ def _process_sequences(
 
     def split_and_pad(example):
         """
-        - Sequences shorter than `max_seq_length` are padded to `max_seq_length`.
-        - Sequences longer than `max_seq_length` are split into chunks of `max_seq_length` (padded).
+        Splits a sequence into fixed-length chunks, discarding the last chunk if smaller than
+        `min_seq_length`, and pads all chunks to `max_seq_length`. The input is padded only as
+        needed to ensure divisibility, and the result is reshaped into chunks of uniform size.
         """
         input_ids: Int[Tensor, "batch len"] = example["input_ids"]
         attention_mask: Int[Tensor, "batch len"] = example["attention_mask"]
         total_length = input_ids.shape[1]
 
-        if total_length <= max_seq_length:
-            padding_length = max_seq_length - total_length
-            return {
-                "input_ids": F.pad(input_ids, (0, padding_length), value=padding_token),
-                "attention_mask": F.pad(
-                    attention_mask, (0, padding_length), value=padding_token
-                ),
-            }
+        num_full_chunks = total_length // max_seq_length
+        last_chunk_length = total_length % max_seq_length
 
-        chunks = {"input_ids": [], "attention_mask": []}
-        for start in range(0, total_length, max_seq_length):
-            end = start + max_seq_length
-            chunk_ids = input_ids[start:end]
-            chunk_mask = attention_mask[start:end]
+        # decide whether to keep or discard last chunk
+        if last_chunk_length > 0 and last_chunk_length < min_seq_length:
+            total_length = num_full_chunks * max_seq_length
+            last_chunk_length = 0
 
-            if len(chunk_ids) >= min_seq_length:
-                if len(chunk_ids) < max_seq_length:
-                    padding_length = max_seq_length - len(chunk_ids)
-                    chunk_ids = chunk_ids + [0] * padding_length
-                    chunk_mask = chunk_mask + [0] * padding_length
-                chunks["input_ids"].append(chunk_ids)
-                chunks["attention_mask"].append(chunk_mask)
-        print(chunks)
-        return chunks
+        padded_length = (
+            total_length
+            if last_chunk_length == 0
+            else total_length + (max_seq_length - last_chunk_length)
+        )
+        padded_input_ids = F.pad(
+            input_ids,
+            (0, padded_length - input_ids.shape[1]),
+            value=padding_token,
+        )
+        padded_attention_mask = F.pad(
+            attention_mask,
+            (0, padded_length - attention_mask.shape[1]),
+            value=padding_token,
+        )
+
+        chunked_input_ids = padded_input_ids.view(-1, max_seq_length)
+        chunked_attention_mask = padded_attention_mask.view(-1, max_seq_length)
+
+        return {
+            "input_ids": chunked_input_ids,
+            "attention_mask": chunked_attention_mask,
+        }
 
     return dataset.map(
         split_and_pad,
@@ -130,5 +197,12 @@ def _process_sequences(
     )
 
 
-def _save(dataset: Dataset, output_dir: Path) -> None:
-    dataset.save_to_disk(output_dir)
+def _save(dataset: Dataset, metadata: dict, output_dir: Path) -> None:
+    dataset_dir_name = f"pretokenized_{metadata['dataset_name'].replace('/', '_')}"
+    dataset_dir = output_dir / dataset_dir_name
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    dataset.save_to_disk(dataset_dir)
+
+    with open(dataset_dir / "preprocessing_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
