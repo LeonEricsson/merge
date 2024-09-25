@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from datasets import Dataset
 from datasets import DownloadMode
 from datasets import load_dataset
+from datasets import Sequence
+from datasets import Value
 from jaxtyping import Bool
 from jaxtyping import Int
 from torch import Tensor
@@ -15,13 +17,15 @@ from merge.preprocessing.tokenizer import AutoTokenizer
 def prepare_dataset(
     dataset_name: str,
     tokenizer: AutoTokenizer,
-    name: str,
     min_seq_length: Int,
     max_seq_length: Int,
+    name: str | None = None,
     split_long_sequences: Bool = True,
     num_proc: Int = 16,
     split: str | None = None,
     revision: str | None = None,
+    data_dir: str | None = None,
+    data_files: str | None = None,
     output_dir: Path = Path("./data"),
     cache_dir: Path = Path("./hf_cache"),
     push: bool = False,
@@ -41,8 +45,10 @@ def prepare_dataset(
         max_seq_length: Maximum sequence length (longer sequences are split or truncated)
         split_long_sequences: If True, splits sequences > max_length into chunks. If False, truncates
         num_proc: Number of processes for parallel preprocessing
-        split: Dataset split to process (e.g., 'train', 'validation')
+        split: Dataset split to process ('train', 'validation'). If None, will return dict of all splits
         revision: Dataset version/revision
+        data_dir: Defining the data_dir of the dataset configuring on HF.
+        data_files: Path(s) to source data file(s) on HF.
         output_dir: Root directory for saving processed datasets
         cache_dir: Directory for HuggingFace cache
         push: Whether to push processed dataset to HuggingFace Hub
@@ -56,19 +62,23 @@ def prepare_dataset(
         name=name,
         split=split,
         revision=revision,
+        data_dir=data_dir,
+        data_files=data_files,
         cache_dir=cache_dir,
         num_proc=num_proc,
     )
 
     if split_long_sequences:
         dataset = _process_sequences(
-            _tokenize(dataset, tokenizer),
+            _tokenize(dataset, tokenizer.tokenizer, num_proc),
             min_seq_length,
             max_seq_length,
             tokenizer.pad_token_id,
         )
     else:
-        dataset = _tokenize_truncate(dataset, tokenizer, max_seq_length, num_proc)
+        dataset = _tokenize_truncate(
+            dataset, tokenizer.tokenizer, max_seq_length, num_proc
+        )
 
     metadata = {
         "dataset_name": dataset_name,
@@ -96,15 +106,19 @@ def _download_dataset(
     name: str,
     split: str | None,
     revision: str | None,
+    data_dir: str | None,
+    data_files: str | None,
     cache_dir: Path,
     num_proc: Int,
 ) -> Dataset:
-
+    print("Downloading dataset...")
     dataset = load_dataset(
         dataset_name,
         name=name,
         split=split,
         revision=revision,
+        data_dir=data_dir,
+        data_files=data_files,
         download_mode=DownloadMode.REUSE_CACHE_IF_EXISTS,
         cache_dir=cache_dir,
         num_proc=num_proc,
@@ -114,8 +128,13 @@ def _download_dataset(
 
 
 def _tokenize(dataset: Dataset, tokenizer: AutoTokenizer, num_proc: Int) -> Dataset:
+    print("Tokenizing dataset...")
+
     dataset = dataset.map(
-        lambda x: tokenizer(x["text"]), batched=True, num_proc=num_proc
+        lambda x: tokenizer(x["text"]),
+        batched=True,
+        num_proc=num_proc,
+        remove_columns=["text"],
     )
     dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
     return dataset
@@ -127,6 +146,7 @@ def _tokenize_truncate(
     max_seq_length: Int,
     num_proc: Int,
 ) -> Dataset:
+    print("Tokenizing & preprocessing dataset...")
     dataset = dataset.map(
         lambda x: tokenizer(
             x["text"], truncation=True, max_length=max_seq_length, padding="max_length"
@@ -136,6 +156,9 @@ def _tokenize_truncate(
         num_proc=num_proc,
     )
     dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+    dataset = dataset.cast_column(
+        "attention_mask", Sequence(feature=Value(dtype="int8"))
+    )
     return dataset
 
 
@@ -145,6 +168,7 @@ def _process_sequences(
     max_seq_length: Int,
     padding_token: Int,
 ) -> Dataset:
+    print("Preprocessing sequences...")
     dataset = dataset.filter(lambda x: len(x["input_ids"]) >= min_seq_length)
 
     def split_and_pad(example):
@@ -178,7 +202,7 @@ def _process_sequences(
         padded_attention_mask = F.pad(
             attention_mask,
             (0, padded_length - attention_mask.shape[1]),
-            value=padding_token,
+            value=0,
         )
 
         chunked_input_ids = padded_input_ids.view(-1, max_seq_length)
@@ -198,6 +222,7 @@ def _process_sequences(
 
 
 def _save(dataset: Dataset, metadata: dict, output_dir: Path) -> None:
+    print("Saving dataset...")
     dataset_dir_name = f"pretokenized_{metadata['dataset_name'].replace('/', '_')}"
     dataset_dir = output_dir / dataset_dir_name
     dataset_dir.mkdir(parents=True, exist_ok=True)

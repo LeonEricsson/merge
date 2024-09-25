@@ -164,3 +164,4 @@ cython_debug/
 
 .vscode/
 hf_cache/
+data/
