@@ -32,7 +32,7 @@ def prepare_dataset(
     hf_username: str | None = None,
 ) -> None:
     """
-    Preprocesses a text dataset from HuggingFace Hub.
+    Preprocesses a text dataset from HuggingFace Hub and store it locally.
 
     Tokenizes text using provided tokenizer, handles sequences based on length constraints, and saves
     the processed dataset with metadata. Can optionally push to HuggingFace Hub.

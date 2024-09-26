@@ -18,6 +18,7 @@ class LlamaConfig:
     d_model: Int
     hidden_dim: Int
     num_heads: Int
+    num_kv_heads: Int
     num_layers: Int
     rope_theta: Float
     norm_eps: Float
@@ -29,7 +30,7 @@ class LlamaConfig:
     pos_encoding_type: str = "rope"
     mlp: str = "mlp_swiglu"
     normalization: str = "rmsnorm"
-    attention: str = "mha"
+    attention: str = "gqa"
 
 
 class Llama(Transformer):
