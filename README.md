@@ -1,2 +1,2 @@
 # merge
-a collection of transformer-based architectures - experimental implementation of various papers
+my collection of paper implementations and experiments. built to be modular, easy to extend, and experiment with.
