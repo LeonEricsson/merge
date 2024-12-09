@@ -18,11 +18,12 @@ class RMSNorm(nn.Module):
         References:
             - "Root Mean Square Layer Normalization" (https://arxiv.org/pdf/1910.07467)
         """
+        super().__init__()
 
         self.eps = eps
         self.gamma = nn.Parameter(torch.ones(dim))
 
-    def _rms(self, x):
+    def _irms(self, x):
         return torch.rsqrt(torch.mean(torch.square(x), dim=-1, keepdim=True) + self.eps)
 
     def forward(self, x):

@@ -175,6 +175,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jaxtyping"
+version = "0.2.36"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/cc/76e38d7d24e590d1a819c9b203b537e5c6416e1c1aebc8c25f598a00d474/jaxtyping-0.2.36.tar.gz", hash = "sha256:781ac44a3cf8982063d7ee48b5008ccfad7b13793bf878eb3058d5319aa08f0f", size = 45171 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/99/c83c6a97f4382caf1c9bfeeeca935d3eb1f479f711665aeadf4408048107/jaxtyping-0.2.36-py3-none-any.whl", hash = "sha256:b19bcbd4009df8734602203402483a4066ad2eb3382904432e370588e9c9707d", size = 55823 },
+]
+
+[[package]]
 name = "jedi"
 version = "0.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -284,6 +293,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "ipykernel" },
+    { name = "jaxtyping" },
     { name = "numpy" },
     { name = "torch", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_system == 'Darwin'" },
     { name = "torch", version = "2.5.1+cu121", source = { registry = "https://download.pytorch.org/whl/cu121" }, marker = "platform_system != 'Darwin'" },
@@ -292,6 +302,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "jaxtyping", specifier = ">=0.2.36" },
     { name = "numpy", specifier = ">=2.1.3" },
     { name = "torch", marker = "platform_system != 'Darwin'", specifier = ">=2.5.1", index = "https://download.pytorch.org/whl/cu121" },
     { name = "torch", marker = "platform_system == 'Darwin'", specifier = ">=2.5.1" },
@@ -697,8 +708,8 @@ dependencies = [
     { name = "fsspec", marker = "platform_system == 'Darwin'" },
     { name = "jinja2", marker = "platform_system == 'Darwin'" },
     { name = "networkx", marker = "platform_system == 'Darwin'" },
-    { name = "setuptools", marker = "platform_system == 'Darwin'" },
-    { name = "sympy", marker = "platform_system == 'Darwin'" },
+    { name = "setuptools", marker = "platform_system == 'Darwin' and python_full_version >= '3.12'" },
+    { name = "sympy", marker = "platform_system == 'Darwin' and python_full_version >= '3.12'" },
     { name = "typing-extensions", marker = "platform_system == 'Darwin'" },
 ]
 wheels = [
@@ -728,9 +739,9 @@ dependencies = [
     { name = "nvidia-cusparse-cu12", marker = "platform_machine == 'x86_64' and platform_system == 'Linux'" },
     { name = "nvidia-nccl-cu12", marker = "platform_machine == 'x86_64' and platform_system == 'Linux'" },
     { name = "nvidia-nvtx-cu12", marker = "platform_machine == 'x86_64' and platform_system == 'Linux'" },
-    { name = "setuptools", marker = "platform_system != 'Darwin'" },
-    { name = "sympy", marker = "platform_system != 'Darwin'" },
-    { name = "triton", marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and platform_system == 'Linux'" },
+    { name = "setuptools", marker = "platform_system != 'Darwin' and python_full_version >= '3.12'" },
+    { name = "sympy", marker = "platform_system != 'Darwin' and python_full_version >= '3.12'" },
+    { name = "triton", marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and platform_system == 'Linux' and python_full_version >= '3.12'" },
     { name = "typing-extensions", marker = "platform_system != 'Darwin'" },
 ]
 wheels = [
