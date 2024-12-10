@@ -14,6 +14,7 @@ class TransformerConfig:
     num_layers: Int
     dropout: Float
     bias: bool
+    rope_theta: Float
     activation_fn: str
     mlp: str
     normalization: str

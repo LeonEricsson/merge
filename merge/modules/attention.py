@@ -4,9 +4,10 @@ import torch.nn.functional as F
 from jaxtyping import Bool
 from jaxtyping import Float
 from jaxtyping import Int
+from jaxtyping import Complex
 from torch import Tensor
 
-from merge.modules.embeddings import apply_rope
+from merge.modules.pos_embeddings import apply_rope
 
 
 def causal_attention_mask(sequence_length):
@@ -42,9 +43,9 @@ class MHA(nn.Module):
 
     def forward(
         self,
-        x: Float[Tensor, "batch seq dim"],
+        x: Float[Tensor, "batch seq d_model"],
         mask: Float[Tensor, "1 1 seq seq"],
-        freqs_cis: Tensor,
+        freqs_cis: Complex[Tensor, "seq half_head_dim"],
     ):
         batch_size, seq_length, d_model = x.size()
 
