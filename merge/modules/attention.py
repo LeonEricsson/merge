@@ -6,6 +6,8 @@ from jaxtyping import Float
 from jaxtyping import Int
 from torch import Tensor
 
+from merge.modules.embeddings import apply_rope
+
 
 def causal_attention_mask(sequence_length):
     mask = torch.tril(torch.ones((1, 1, sequence_length, sequence_length)))
@@ -16,7 +18,7 @@ class MHA(nn.Module):
 
     def __init__(
         self,
-        dim: Int,
+        d_model: Int,
         n_heads: Int,
         attn_droput: Float = 0.0,
         res_dropout: Float = 0.0,
@@ -25,11 +27,11 @@ class MHA(nn.Module):
         super().__init__()
 
         self.n_heads = n_heads
-        self.head_dim = dim // n_heads
+        self.head_dim = d_model // n_heads
         self.scale = self.head_dim**-0.5
 
-        self.W_QKV = nn.Linear(dim, dim * 3, bias=bias)
-        self.W_O = nn.Linear(dim, dim, bias=bias)
+        self.W_QKV = nn.Linear(d_model, d_model * 3, bias=bias)
+        self.W_O = nn.Linear(d_model, d_model, bias=bias)
 
         self.attn_dropout = nn.Dropout(attn_droput)
         self.res_dropout = nn.Dropout(res_dropout)
@@ -42,6 +44,7 @@ class MHA(nn.Module):
         self,
         x: Float[Tensor, "batch seq dim"],
         mask: Float[Tensor, "1 1 seq seq"],
+        freqs_cis: Tensor,
     ):
         batch_size, seq_length, d_model = x.size()
 
@@ -53,12 +56,11 @@ class MHA(nn.Module):
         k = k.reshape(batch_size, seq_length, self.n_heads, self.head_dim)
         v = v.reshape(batch_size, seq_length, self.n_heads, self.head_dim)
 
-        # Apply RoPE
-        # q, k = rope(q, k)
-
         q = q.transpose(1, 2)  # (batch, n_heads, seq, head_dim)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
+
+        q, k = apply_rope(q, k, freqs_cis)
 
         if self.flash_attn:
             output = torch.nn.functional.scaled_dot_product_attention(
@@ -84,3 +86,8 @@ class MHA(nn.Module):
         output = self.res_dropout(output)
 
         return output
+
+
+ATTN_MAP = {
+    "mha": MHA,
+}

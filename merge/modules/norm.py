@@ -29,3 +29,10 @@ class RMSNorm(nn.Module):
     def forward(self, x):
         irms = self._irms(x.float()).type_as(x)
         return self.gamma * x * irms
+
+
+NORM_MAP = {
+    "rmsnorm": RMSNorm,
+    "layernorm": nn.LayerNorm,
+    "none": nn.Identity,
+}

@@ -82,3 +82,9 @@ class MLPSwiGLU(nn.Module):
         x = self.down(x)
         x = self.dropout(x)
         return x
+
+
+MLP_MAP = {
+    "mlp": MLP,
+    "mlp_swiglu": MLPSwiGLU,
+}
