@@ -32,7 +32,9 @@ model_config = LlamaConfig(
     attention="gqa",
 )
 
-dataset_dir = "data/pretokenized_roneneldan_TinyStories"
+dataset_dir = (
+    "data/pretokenized_roneneldan_TinyStories"  # pretokenized - run preprocess.py first
+)
 
 batch_size = 32
 learning_rate = 5e-5
@@ -46,8 +48,22 @@ def validate():
     pass
 
 
-def train():
-    pass
+def train(
+    train_dataloader,
+    model,
+    optimizer,
+    scheduler,
+    num_epochs,
+):
+
+    for epoch in range(num_epochs):
+        model.train()
+        for batch in train_dataloader:
+            optimizer.zero_grad()
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+
+        validate()
 
 
 def extract_preprocessed_max_seq_length():
@@ -75,4 +91,4 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = CosineWarmupScheduler(optimizer, warmup_steps=1000, total_steps=10000)
 
-    #
+    train(train_dataloader, model, optimizer, scheduler, num_epochs)
