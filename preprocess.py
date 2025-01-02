@@ -10,8 +10,9 @@ to the HuggingFace Hub.
 
 
 def prepare_tinystories():
-    tokenizer = AutoTokenizer("EleutherAI/gpt-neo-125m")
-
+    tokenizer = AutoTokenizer.create("EleutherAI/gpt-neo-125m")
+    tokenizer.add_special_tokens({"pad_token": "<|pad|>"})
+    
     prepare_dataset(
         dataset_name="roneneldan/TinyStories",
         tokenizer=tokenizer,

@@ -29,14 +29,16 @@ class Transformer(nn.Module):
         )
 
     def forward(
-        self, x: Int[Tensor, "batch seq"]
+        self, x: Int[Tensor, "batch seq"], pad_mask: Int[Tensor, "batch seq"],
     ) -> Float[Tensor, "batch seq vocab_size"]:
+        mask = self.causal_mask & pad_mask[:, None, None, :]
+
         x = self.token_emb(x)
 
         x, pos_info = self.pos_encoding(x)
 
         for block in self.blocks:
-            x = block(x, self.causal_mask, pos_info)
+            x = block(x, mask, pos_info)
 
         x = self.norm_out(x)
 

@@ -56,6 +56,7 @@ def prepare_dataset(
     """
     assert min_seq_length <= max_seq_length
     assert tokenizer.pad_token_id is not None
+    assert tokenizer.bos_token_id is not None
 
     dataset = _download_dataset(
         dataset_name=dataset_name,
@@ -83,6 +84,7 @@ def prepare_dataset(
     metadata = {
         "dataset_name": dataset_name,
         "tokenizer_name": tokenizer.name_or_path,
+        "paddding_token_id": tokenizer.pad_token_id,
         "preprocessing_params": {
             "min_seq_length": min_seq_length,
             "max_seq_length": max_seq_length,
@@ -131,7 +133,7 @@ def _tokenize(dataset: Dataset, tokenizer: AutoTokenizer, num_proc: Int) -> Data
     print("Tokenizing dataset...")
 
     dataset = dataset.map(
-        lambda x: tokenizer(x["text"]),
+        lambda x: tokenizer(tokenizer.bos_token + x["text"]),
         batched=True,
         num_proc=num_proc,
         remove_columns=["text"],
@@ -149,7 +151,10 @@ def _tokenize_truncate(
     print("Tokenizing & preprocessing dataset...")
     dataset = dataset.map(
         lambda x: tokenizer(
-            x["text"], truncation=True, max_length=max_seq_length, padding="max_length"
+            tokenizer.bos_token + x["text"], 
+            truncation=True, 
+            max_length=max_seq_length, 
+            padding="max_length"
         ),
         batched=True,
         remove_columns=["text"],
