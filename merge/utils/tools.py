@@ -1,7 +1,7 @@
-import torch
+from typing import Dict
 
 
-def auto_device(device: str = None) -> torch.device:
+def auto_device(device: str = None):
     """
     Utility function to validate or determine a torch.device.
 
@@ -11,6 +11,8 @@ def auto_device(device: str = None) -> torch.device:
     Returns:
         torch.device: A validated or determined torch.device instance.
     """
+    import torch
+
     if device:
         try:
             validated_device = torch.device(device)
@@ -29,3 +31,26 @@ def auto_device(device: str = None) -> torch.device:
             return torch.device("mps")
         else:
             return torch.device("cpu")
+
+
+def get_gpu_memory() -> Dict[str, float]:
+    import GPUtil
+
+    try:
+        gpu = GPUtil.getGPUs()[0]  # Assuming single GPU setup
+        return {
+            "gpu_memory_used": gpu.memoryUsed,
+            "gpu_memory_total": gpu.memoryTotal,
+            "gpu_memory_util": gpu.memoryUtil * 100,
+        }
+    except Exception:
+        return {}
+
+
+def get_system_stats() -> Dict[str, float]:
+    import psutil
+
+    return {
+        "cpu_percent": psutil.cpu_percent(),
+        "memory_percent": psutil.virtual_memory().percent,
+    }

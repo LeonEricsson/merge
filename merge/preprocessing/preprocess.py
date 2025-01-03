@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import tokenizers.processors as processors
 import torch.nn.functional as F
 from datasets import Dataset
 from datasets import DownloadMode
@@ -84,7 +85,7 @@ def prepare_dataset(
     metadata = {
         "dataset_name": dataset_name,
         "tokenizer_name": tokenizer.name_or_path,
-        "paddding_token_id": tokenizer.pad_token_id,
+        "pad_token_id": tokenizer.pad_token_id,
         "preprocessing_params": {
             "min_seq_length": min_seq_length,
             "max_seq_length": max_seq_length,
@@ -129,11 +130,27 @@ def _download_dataset(
     return dataset.select_columns("text")
 
 
+def _add_bos_token(tokenizer: AutoTokenizer):
+    tokenizer._tokenizer.post_processor = processors.Sequence(
+        [
+            processors.ByteLevel(trim_offsets=False),
+            processors.TemplateProcessing(
+                single=f"{tokenizer.bos_token}:0 $A:0",
+                pair=f"{tokenizer.bos_token}:0 $A:0 {tokenizer.bos_token}:1 $B:1",
+                special_tokens=[
+                    (tokenizer.bos_token, tokenizer.bos_token_id),
+                ],
+            ),
+        ]
+    )
+    return tokenizer
+
+
 def _tokenize(dataset: Dataset, tokenizer: AutoTokenizer, num_proc: Int) -> Dataset:
     print("Tokenizing dataset...")
-
+    tokenizer = _add_bos_token(tokenizer)
     dataset = dataset.map(
-        lambda x: tokenizer(tokenizer.bos_token + x["text"]),
+        lambda x: tokenizer(x["text"]),
         batched=True,
         num_proc=num_proc,
         remove_columns=["text"],
@@ -149,12 +166,13 @@ def _tokenize_truncate(
     num_proc: Int,
 ) -> Dataset:
     print("Tokenizing & preprocessing dataset...")
+    tokenizer = _add_bos_token(tokenizer)
     dataset = dataset.map(
         lambda x: tokenizer(
-            tokenizer.bos_token + x["text"], 
-            truncation=True, 
-            max_length=max_seq_length, 
-            padding="max_length"
+            x["text"],
+            truncation=True,
+            max_length=max_seq_length,
+            padding="max_length",
         ),
         batched=True,
         remove_columns=["text"],
